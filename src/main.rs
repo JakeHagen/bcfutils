@@ -1,8 +1,8 @@
 extern crate rust_htslib;
 extern crate serde;
-extern crate bio;
+//extern crate bio;
 extern crate linear_map;
-use bio::io::gff;
+//use bio::io::gff;
 use crate::rust_htslib::bcf::{Reader, Read, Writer, Format, Header};
 use rust_htslib::bcf::header::HeaderRecord;
 use rust_htslib::bcf::record::{Buffer};
@@ -12,6 +12,9 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::str;
 use csv;
+use std::fs::File;
+use std::io::{prelude::*, BufReader};
+
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -72,31 +75,79 @@ fn get_wrtr(input: Option<&str>, hdr: &rust_htslib::bcf::Header) -> rust_htslib:
     }
 }
 
-//fn extract_transcript() -> {
-//
-//}
-//
-fn build_trx_map(gff_fp: Option<&str>) -> HashMap<String, String> {
-    let mut gff_rdr = gff::Reader::from_file(gff_fp.unwrap(), gff::GffType::GFF3).expect("error reading gff");
-    let mut trx_map: HashMap<String, String> = HashMap::new();
-    for record in gff_rdr.records() {
-        let mut s = String::new();
-        s.push('|');
-        let rec = record.ok().expect("Error reading record.");
-        if rec.feature_type() == "transcript" {
-            let tags = rec.attributes().get_vec("tag");
-            match tags {
-                None => continue,
-                Some(v) => {
-                    if v.contains(&"Ensembl_canonical".to_string()) {
-                        s.push_str(&"YES");
-                    }
-                }
+fn extract_trns_id(s: &str) -> &str {
+    let sb = s.find("ID=").expect("transcript line doesnt have ID= field");
+    let peb = sb + s[sb..].find(";").expect("could not find next ';', line is malformed");
+    let eb = sb + s[sb..peb].find(".").expect("transcript doesnt have '.' notation");
+    return &s[sb+3..eb];
+}
+
+fn extract_appris(s: &str) -> Option<&str> {
+    let sb = match s.find("appris_") {
+        Some(b) => b+7,
+        None => return None,
+    };
+    let peb = match s[sb..].find(";") {
+        Some(b) => sb + b,
+        None => s.len(),
+    };
+    let eb = match s[sb..peb].find(",") {
+        Some(b) => sb + b,
+        None => peb,
+    };
+
+    return Some(&s[sb..eb]);
+}
+
+fn is_canonical(tag: &str) -> bool {
+      match tag.find("Ensembl_canonical") {
+          Some(_) => return true,
+          None => return false,
+      }
+}
+
+fn add_trns_to_map(line: String, map: &mut HashMap<String, String>) {
+    for (i, col) in line.split("\t").enumerate() {
+        if i == 2 {
+            if col != "transcript" { return; }
+        }
+        if i == 8 {
+            let mut s = String::new();
+            if is_canonical(col) {
+                s.push_str("|YES")
+            } else {
+                s.push('|')
             }
-            trx_map.insert(rec.attributes().get("ID").expect("transcript did not have ID for some reason").split('.').next().unwrap().to_string().clone(), s);
+            match extract_appris(col) {
+                Some(appris) => {
+                    s.push('|');
+                    s.push_str(appris);
+                }
+                None => s.push('|'),
+            }
+            let trns_id = extract_trns_id(col);
+            map.insert(trns_id.to_string(), s);
         }
     }
-    return trx_map;
+}
+
+
+fn build_trx_map(gff_fp: Option<&str>) -> HashMap<String, String> {
+    let gff = File::open(gff_fp.unwrap());
+    let rdr = BufReader::new(gff.expect("couldnt make buffer for gff file"));
+
+    let mut trns_map: HashMap<String, String> = HashMap::new();
+
+    for line in rdr.lines() {
+        if let Ok(l) = line {
+            if &l[0..1] == "#" {
+                continue;
+            }
+            add_trns_to_map(l, &mut trns_map);
+        }
+    }
+
+    return trns_map;
 }
 
 fn get_bcsq_hdr_map(hdr_recs: Vec<HeaderRecord>) -> Option<LinearMap<String, String>> { //rust_htslib::bcf::HeaderRecord> {
@@ -113,7 +164,7 @@ fn get_bcsq_hdr_map(hdr_recs: Vec<HeaderRecord>) -> Option<LinearMap<String, Str
     return None
 }
 
-fn get_num_bcsq_keys(desc: &String) -> usize {
+fn get_num_bcsq_keys(desc: &str) -> usize {
     return desc.split('|').count()
 }
 
@@ -127,7 +178,7 @@ fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>) {
     
     let mut hdr = Header::from_template(&hdrv);
     hdr.remove_info(b"BCSQ");
-    hdr.push_record(r#"##INFO=<ID=BCSQ,Number=.,Type=String,Description="Local consequence annotation from BCFtools/csq, see http://samtools.github.io/bcftools/howtos/csq-calling.html for details. Format: Consequence|gene|transcript|biotype|strand|amino_acid_change|dna_change|CANONICAL">"#.as_bytes());
+    hdr.push_record(r#"##INFO=<ID=BCSQ,Number=.,Type=String,Description="Local consequence annotation from BCFtools/csq, see http://samtools.github.io/bcftools/howtos/csq-calling.html for details. Format: Consequence|gene|transcript|biotype|strand|amino_acid_change|dna_change|CANONICAL|appris">"#.as_bytes());
     let mut obcf = get_wrtr(output, &hdr);
 
     let trx_map = build_trx_map(gff_fp);
@@ -137,12 +188,18 @@ fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>) {
         let bcsqs = record.info_shared_buffer(b"BCSQ", &mut b).string().unwrap().unwrap();
         let mut mbcsqs = String::new();
         for (i, bcsq_b) in bcsqs.iter().enumerate() {
-            let num_c_bcsq = get_num_bcsq_keys(bcsq_b.to_string()); 
             if i > 0 {
                 mbcsqs.push(',');
             };
             let bcsq = str::from_utf8(bcsq_b).unwrap();
+            let num_c_bcsq = get_num_bcsq_keys(bcsq);
+
             mbcsqs.push_str(bcsq);
+
+            let num_to_fill = num_keys - num_c_bcsq;
+            for _ in 0..num_to_fill {
+                mbcsqs.push('|');
+            }
             let trn = bcsq.split('|').collect::<Vec<&str>>()[2];
             match trx_map.get(trn) {
                 Some(t) => mbcsqs.push_str(t),
