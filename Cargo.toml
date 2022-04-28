@@ -10,6 +10,8 @@ rust-htslib = "0.38.2"
 serde = { version = "1.0.136", features = ["derive"] }
 csv = "1.1.6"
 clap = { version = "3.1.12", features = ["derive"] }
+bio = "*"
+linear-map = "1.2.0"
 
 [profile.release]
 opt-level = 3
