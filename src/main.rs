@@ -82,28 +82,46 @@ fn extract_trns_id(s: &str) -> &str {
     return &s[sb+3..eb];
 }
 
-fn extract_appris(s: &str) -> Option<&str> {
-    let sb = match s.find("appris_") {
-        Some(b) => b+7,
+fn get_field<'a>(s: &'a str, field: &'a str) -> Option<&'a str> {
+    let sb = match s.find(field) {
+        Some(b) => b+field.len()+1, // +1 for the equal sign
         None => return None,
     };
-    let peb = match s[sb..].find(";") {
+    let eb = match s[sb..].find(";") {
         Some(b) => sb + b,
         None => s.len(),
     };
-    let eb = match s[sb..peb].find(",") {
-        Some(b) => sb + b,
-        None => peb,
-    };
-
     return Some(&s[sb..eb]);
 }
 
-fn is_canonical(tag: &str) -> bool {
-      match tag.find("Ensembl_canonical") {
-          Some(_) => return true,
-          None => return false,
-      }
+fn has_tag(tags: &str, tag: &str) -> bool {
+    match tags.find(tag) {
+        Some(_) => return true,
+        None => return false,
+    };
+}
+
+fn extract_appris(tags: &str) -> Option<&str> {
+    let sb = match tags.find("appris_") {
+        Some(b) => b+7, // 7 == length of appris_
+        None => return None,
+    };
+    let eb = match tags[sb..].find(",") {
+        Some(b) => sb + b,
+        None => tags.len(),
+    };
+    return Some(&tags[sb..eb]);
+}
+
+fn extract_uncertain_start_end(tags: &str) -> String {
+    let mut found_tags = vec![];
+    let possible_tags = vec!["cds_start_NF", "cds_end_NF", "mRNA_start_NF", "mRNA_end_NF"];
+    for tag in possible_tags {
+        if has_tag(tags, tag) {
+            found_tags.push(tag);
+        }
+    }
+    return found_tags.join("&");
 }
 
 fn add_trns_to_map(line: String, map: &mut HashMap<String, String>) {
@@ -113,18 +131,43 @@ fn add_trns_to_map(line: String, map: &mut HashMap<String, String>) {
         }
         if i == 8 {
             let mut s = String::new();
-            if is_canonical(col) {
-                s.push_str("|YES")
-            } else {
-                s.push('|')
-            }
-            match extract_appris(col) {
-                Some(appris) => {
+            match get_field(col, "tag") {
+                Some(tags) => {
+                    // add CANONICAL
+                    if has_tag(tags, "Ensembl_canonical") {
+                        s.push_str("|YES")
+                    } else {
+                        s.push('|')
+                    }
+                    // add appris
+                    match extract_appris(tags) {
+                        Some(appris) => {
+                            s.push('|');
+                            s.push_str(appris);
+                        }
+                        None => s.push('|'),
+                    }
+                    // add CCDS
+                    if has_tag(tags, "CCDS") {
+                        s.push_str("|CCDS")
+                    } else {
+                        s.push('|')
+                    }
+                    // add uncertain start/end
                     s.push('|');
-                    s.push_str(appris);
+                    s.push_str(&extract_uncertain_start_end(tags));
                 }
+                None => s.push_str("||||"),
+            };
+            // add TSL
+            match get_field(col, "transcript_support_level") {
+                Some(tsl) => {
+                    s.push('|');
+                    s.push_str(tsl);
+                },
                 None => s.push('|'),
-            }
+            };
+
             let trns_id = extract_trns_id(col);
             map.insert(trns_id.to_string(), s);
         }
@@ -178,7 +221,7 @@ fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>) {
     
     let mut hdr = Header::from_template(&hdrv);
     hdr.remove_info(b"BCSQ");
-    hdr.push_record(r#"##INFO=<ID=BCSQ,Number=.,Type=String,Description="Local consequence annotation from BCFtools/csq, see http://samtools.github.io/bcftools/howtos/csq-calling.html for details. Format: Consequence|gene|transcript|biotype|strand|amino_acid_change|dna_change|CANONICAL|appris">"#.as_bytes());
+    hdr.push_record(r#"##INFO=<ID=BCSQ,Number=.,Type=String,Description="Local consequence annotation from BCFtools/csq, see http://samtools.github.io/bcftools/howtos/csq-calling.html for details. Format: Consequence|gene|transcript|biotype|strand|amino_acid_change|dna_change|CANONICAL|appris|ccds|unknown_start_end|TSL">"#.as_bytes());
     let mut obcf = get_wrtr(output, &hdr);
 
     let trx_map = build_trx_map(gff_fp);
@@ -203,21 +246,12 @@ fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>) {
             let trn = bcsq.split('|').collect::<Vec<&str>>()[2];
             match trx_map.get(trn) {
                 Some(t) => mbcsqs.push_str(t),
-                None => mbcsqs.push('|'),
+                None => mbcsqs.push_str("|||||"),
             }
         };
         record.push_info_string(b"BCSQ", &[mbcsqs.as_bytes()]).expect("failed to set QD info field");
         obcf.write(&record).expect("failed to write record");
-
-        //let bcsq = match str::from_utf8(record.info(b"BCSQ").string().unwrap()) {
-        //    Ok(v) => v,
-        //    Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-        //};
-        //println!("{}", bcsq);
     }
-        
-    
-
 }
 
 
