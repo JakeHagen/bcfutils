@@ -123,7 +123,7 @@ fn build_trx_map(gff_fp: Option<&str>) -> HashMap<String, String> {
     return trns_map;
 }
 
-fn get_bcsq_hdr_map(hdr_recs: Vec<HeaderRecord>) -> Option<LinearMap<String, String>> { //rust_htslib::bcf::HeaderRecord> {
+fn get_bcsq_hdr_map(hdr_recs: Vec<HeaderRecord>) -> Option<LinearMap<String, String>> {
     for hrec in hdr_recs.iter() {
         match hrec {
             HeaderRecord::Info{key,values} => {
@@ -158,7 +158,14 @@ pub fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>) {
     let mut b = Buffer::new();
     for record_result in bcf.records() {
         let mut record = record_result.expect("fail to read record");
-        let bcsqs = record.info_shared_buffer(b"BCSQ", &mut b).string().unwrap().unwrap();
+        let bcsqs = match record.info_shared_buffer(b"BCSQ", &mut b).string().unwrap() {
+            Some(b)  => b,
+            None => {
+                obcf.write(&record).expect("failed to write record");
+                continue;
+            }
+        };
+
         let mut mbcsqs = String::new();
         for (i, bcsq_b) in bcsqs.iter().enumerate() {
             if i > 0 {

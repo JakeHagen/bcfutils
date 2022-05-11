@@ -35,6 +35,11 @@ enum Commands {
         #[clap(long, short)]
         gff: Option<String>,
     },
+    PICK {
+          input: Option<String>,
+          #[clap(long, short)]
+          output: Option<String>,
+      },
 }
 
 fn main() {
@@ -49,6 +54,9 @@ fn main() {
         }
         Commands::MCSQ { input, output, gff } => {
             mcsq::mcsq(input.as_deref(), output.as_deref(), gff.as_deref())
+        }
+        Commands::PICK { input, output } => {
+            pick::pick(input.as_deref(), output.as_deref())
         }
     }
 }
