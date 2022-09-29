@@ -1,4 +1,4 @@
-use crate::rust_htslib::bcf::{Read, Header};
+use rust_htslib::bcf::{Read, Header};
 
 pub fn ann_qd(input: Option<&str>, output: Option<&str>) {
     let mut bcf = bcfutils::get_rdr(input);

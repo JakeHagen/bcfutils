@@ -1,10 +1,5 @@
-extern crate rust_htslib;
-extern crate linear_map;
 mod commands;
-
 use commands::*;
-use std::str;
-
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -34,12 +29,25 @@ enum Commands {
         output: Option<String>,
         #[clap(long, short)]
         gff: Option<String>,
+        #[clap(long, value_parser, default_value_t = 1)]
+        threads: usize,
     },
-    PICK {
-          input: Option<String>,
-          #[clap(long, short)]
-          output: Option<String>,
-      },
+    MNV {
+        input: Option<String>,
+        #[clap(long, short)]
+        output: Option<String>,
+    },
+    GLKUP {
+        input: Option<String>,
+        #[clap(long, short)]
+        output: Option<String>,
+        #[clap(long, short)]
+        fields: Option<String>,
+        #[clap(long, takes_value = false)]
+        dbnsfp: bool,
+        #[clap(long, value_parser, default_value_t = 1)]
+        threads: usize,
+    }
 }
 
 fn main() {
@@ -52,11 +60,14 @@ fn main() {
         Commands::FamFreq { input, output, pedigree } => {
             fam_freq::fam_freq(pedigree.as_deref())
         }
-        Commands::MCSQ { input, output, gff } => {
-            mcsq::mcsq(input.as_deref(), output.as_deref(), gff.as_deref())
+        Commands::MCSQ { input, output, gff, threads } => {
+            mcsq::mcsq(input.as_deref(), output.as_deref(), gff.as_deref(), threads)
         }
-        Commands::PICK { input, output } => {
-            pick::pick(input.as_deref(), output.as_deref())
+        Commands::MNV { input, output } => {
+            mnv::mnv(input.as_deref(), output.as_deref())
+        }
+        Commands::GLKUP { input, output, fields, dbnsfp, threads } => {
+            glkup::glkup(input.as_deref(), output.as_deref(), fields.as_deref(), dbnsfp, threads)
         }
     }
 }
