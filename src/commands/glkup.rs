@@ -10,7 +10,7 @@ use std::error::Error;
 use std::process;
 use std::io;
 
-static DBNSFP: &[u8] = include_bytes!("../../lookups/dbNSFP4.2_gene");
+static DBNSFP: &[u8] = include_bytes!("../../lookups/dbNSFP4.2_gene.semicolon_replaced.txt");
 static GNOMAD: &[u8] = include_bytes!("../../lookups/gnomad.v2.1.1.lof_metrics.by_gene.txt");
 
 #[derive(Debug, Deserialize)]
@@ -42,9 +42,9 @@ struct DBrow {
     gene_full: String,
     #[serde(rename = "Pathway(Uniprot)")]
     pathway_uniprot: String,
-    #[serde(rename = "Pathway(BioCarta)")]
+    #[serde(rename = "Pathway(BioCarta)_full")]
     pathway_biocarta: String,
-    #[serde(rename = "Pathway(ConsensusDB)")]
+    #[serde(rename = "Pathway(ConsensusPathDB)")]
     pathway_consensusPathDB: String,
     #[serde(rename = "Pathway(KEGG)_full")]
     pathway_kegg: String,
@@ -95,7 +95,10 @@ fn build_gnomad_map() -> HashMap<String, Grow> {
               Ok::<Grow, _>(grow) => {
                   map.insert(grow.gene.clone(), grow);
               },
-              Err(e) => continue,
+              Err(e) => {
+                  eprintln!("serde had serializing gnomad, check columns match code: {}", e);
+                  process::exit(1);
+              }
           }
       }
     return map;
@@ -109,11 +112,55 @@ fn build_dbnsfp_map() -> HashMap<String, DBrow> {
             Ok::<DBrow, _>(dbrow) => {
                 map.insert(dbrow.gene.clone(), dbrow);
             },
-            Err(e) => continue,
+            Err(e) => {
+                eprintln!("serde had serializing gnomad, check columns match code: {}", e);
+                process::exit(1);
+            }
         }
     }
     return map;
 }
+
+fn add_gnomad_hdr_fields(hdr: &mut rust_htslib::bcf::Header, fields: &str) {
+    hdr.push_record(format!("##INFO=<ID=gnomAD_gene,Number=1,Type=String,Description=\"gene for gnomad gene level fields, from {} INFO fields\">", fields).as_bytes());
+    hdr.push_record(r#"##INFO=<ID=gnomAD_pLI,Number=1,Type=Float,Description="pLI from gnomad.v2.1.1.lof_metrics.by_gene.txt, using INFO.gnomAD_gene to lookup">"#.as_bytes());
+    hdr.push_record(r#"##INFO=<ID=oe_lof,Number=1,Type=Float,Description="oe_lof from gnomad.v2.1.1.lof_metrics.by_gene.txt, using INFO.gnomAD_gene to lookup">"#.as_bytes());
+    hdr.push_record(r#"##INFO=<ID=oe_lof_upper,Number=1,Type=Float,Description="oe_lof_upper from gnomad.v2.1.1.lof_metrics.by_gene.txt, using INFO.gnomAD_gene to lookup">"#.as_bytes());
+    hdr.push_record(r#"##INFO=<ID=syn_z,Number=1,Type=Float,Description="syn_z from gnomad.v2.1.1.lof_metrics.by_gene.txt, using INFO.gnomAD_gene to lookup">"#.as_bytes());
+    hdr.push_record(r#"##INFO=<ID=mis_z,Number=1,Type=Float,Description="mis_z from gnomad.v2.1.1.lof_metrics.by_gene.txt, using INFO.gnomAD_gene to lookup">"#.as_bytes());
+    hdr.push_record(r#"##INFO=<ID=lof_z,Number=1,Type=Float,Description="lof_z from gnomad.v2.1.1.lof_metrics.by_gene.txt, using INFO.gnomAD_gene to lookup">"#.as_bytes());
+    hdr.push_record(r#"##INFO=<ID=exac_pLI,Number=1,Type=Float,Description="exac_pLI from gnomad.v2.1.1.lof_metrics.by_gene.txt, using INFO.gnomAD_gene to lookup">"#.as_bytes());
+    return
+}
+
+fn add_dbnsfp_hdr_fields(hdr: &mut rust_htslib::bcf::Header, fields: &str) {
+      hdr.push_record(format!("##INFO=<ID=dbnsfp_gene,Number=1,Type=String,Description=\"gene for dbnsfp gene level fields, from {}\">", fields).as_bytes());
+      hdr.push_record(r#"##INFO=<ID=gene_syn,Number=1,Type=String,Description="Gene_other_names from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=gene_full,Number=1,Type=String,Description="Gene_full_name from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=pathway_uniprot,Number=1,Type=String,Description="Pathway(Uniprot) from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=pathway_biocarta,Number=1,Type=String,Description="Pathway(BioCarta)_full from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=pathway_consensusPathDB,Number=1,Type=String,Description="Pathway(ConsensusPathDB) from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=pathway_kegg,Number=1,Type=String,Description="Pathway(KEGG)_full from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=gene_function,Number=1,Type=String,Description="Function_description from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=gene_disease,Number=1,Type=String,Description="Disease_description from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=MIM_phenotype_id,Number=1,Type=String,Description="MIM_phenotype_id from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=MIM_disease,Number=1,Type=String,Description="MIM_disease from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=orphanet_id,Number=1,Type=String,Description="Orphanet_disorder_id from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=orphanet_disorder,Number=1,Type=String,Description="Orphanet_disorder from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=orphanet_assoc_type,Number=1,Type=String,Description="Orphanet_association_type from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=GWAS_trait,Number=1,Type=String,Description="Trait_association(GWAS) from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=HPO_id,Number=1,Type=String,Description="HPO_id from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=HPO_name,Number=1,Type=String,Description="HPO_name from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=GO_bio_process,Number=1,Type=String,Description="GO_biological_process from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=GO_cellular_comp,Number=1,Type=String,Description="GO_cellular_component from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=GO_molecular_func,Number=1,Type=String,Description="GO_molecular_function from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=UNIPROT_tissue_specificity,Number=1,Type=String,Description="Tissue_specificity(Uniprot) from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=egenetics_expression,Number=1,Type=String,Description="Expression(egenetics) from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=GNF_atlas_expression,Number=1,Type=String,Description="Expression(GNF/Atlas) from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=MGI_mouse_gene,Number=1,Type=String,Description="MGI_mouse_gene from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      hdr.push_record(r#"##INFO=<ID=MGI_mouse_phenotype,Number=1,Type=String,Description="MGI_mouse_phenotype from dbNSFP4.2_gene.complete using INFO.dbnsfp_gene to lookup">"#.as_bytes());
+      return
+  }
 
 fn add_gnomad_fields(grow: &Grow, record: &mut rust_htslib::bcf::record::Record) {
     record.push_info_string("gnomAD_gene".as_bytes(), &[grow.gene.as_bytes()]).expect("failed to set gnomAD_gene field");
@@ -169,7 +216,7 @@ fn add_dbnsfp_fields(dbrow: &DBrow, record: &mut rust_htslib::bcf::record::Recor
         record.push_info_string("gene_syn".as_bytes(), &[dbrow.gene_syn.as_bytes()]).expect("failed to set gene_syn field");
     }
     if dbrow.gene_full != "." {
-        record.push_info_string("gene_ful".as_bytes(), &[dbrow.gene_full.as_bytes()]).expect("failed to set gene_full field");
+        record.push_info_string("gene_full".as_bytes(), &[dbrow.gene_full.as_bytes()]).expect("failed to set gene_full field");
     }
     if dbrow.pathway_uniprot != "." {
         record.push_info_string("pathway_uniprot".as_bytes(), &[dbrow.pathway_uniprot.as_bytes()]).expect("failed to set pathway_uniprot field");
@@ -247,28 +294,27 @@ pub fn glkup(input: Option<&str>, output: Option<&str>, fields: Option<&str>, db
     let hdrv = bcf.header();
     let mut hdr = Header::from_template(&hdrv);
 
-    hdr.push_record(format!("##INFO=<ID=gnomad_gene,Number=1,Type=String,Description=\"gene used to get gnomad gene level fields, pulled from {} INFO fields in descending priority\">", fields.expect("must supply fields to pull gene from")).as_bytes());
-    hdr.push_record(r#"##INFO=<ID=gnomAD_pLI,Number=1,Type=Float,Description="gnomAD pLI for gene in gnomad_gene INFO field">"#.as_bytes());
-    hdr.push_record(r#"##INFO=<ID=oe_lof,Number=1,Type=Float,Description="gnomAD oe_lof for gene in gnomad_gene INFO field">"#.as_bytes());
-    hdr.push_record(r#"##INFO=<ID=oe_lof_upper,Number=1,Type=Float,Description="gnomAD oe_lof_upper for gene in gnomad_gene INFO field">"#.as_bytes());
-    hdr.push_record(r#"##INFO=<ID=syn_z,Number=1,Type=Float,Description="gnomAD syn_z for gene in gnomad_gene INFO field">"#.as_bytes());
-    hdr.push_record(r#"##INFO=<ID=mis_z,Number=1,Type=Float,Description="gnomAD mis_z for gene in gnomad_gene INFO field">"#.as_bytes());
-    hdr.push_record(r#"##INFO=<ID=lof_z,Number=1,Type=Float,Description="gnomAD lof_z for gene in gnomad_gene INFO field">"#.as_bytes());
-    hdr.push_record(r#"##INFO=<ID=exac_pLI,Number=1,Type=Float,Description="gnomAD exac_pLI for gene in gnomad_gene INFO field">"#.as_bytes());
+    let fields = match fields {
+        Some(f) => f,
+        None => {
+            eprintln!("Error: need to specify INFO fields to get gene name from");
+            process::exit(1);
+        }
+    };
+
+    add_gnomad_hdr_fields(&mut hdr, fields);
+    let gmap = build_gnomad_map();
+
+    let dmap = build_dbnsfp_map();
+    if *dbnsfp {
+        add_dbnsfp_hdr_fields(&mut hdr, fields);
+        //dmap = build_dbnsfp_map();
+    };
 
     let mut obcf = bcfutils::get_wrtr(output, &hdr);
     obcf.set_threads(threads.clone()).expect("unable to set writer threads");
 
-    let fs: Vec<String> = match fields {
-        Some(f) => f.split(",").map(|s| s.to_string()).collect(),
-        None => {
-            eprintln!("Error: need to specify INFO fields to grab gene names from");
-            process::exit(1);
-        }
-    }; 
-
-    let gmap = build_gnomad_map();
-    let dmap = build_dbnsfp_map();
+    let fs: Vec<&str> = fields.split(",").collect();//map(|s| s.to_string()).collect();
 
     let mut b = Buffer::new();
     for record_result in bcf.records() {
@@ -285,22 +331,23 @@ pub fn glkup(input: Option<&str>, output: Option<&str>, fields: Option<&str>, db
                 None => continue,
             };
             add_gnomad_fields(grow, &mut record);
+            break;
         };
 
-        for f in &fs {
-            let gene = match record.info_shared_buffer(f.as_bytes(), &mut b).string().unwrap() {
-                Some(g) => str::from_utf8(g[0]).unwrap(),
-                None => continue,
+        if *dbnsfp {
+            for f in &fs {
+                let gene = match record.info_shared_buffer(f.as_bytes(), &mut b).string().unwrap() {
+                    Some(g) => str::from_utf8(g[0]).unwrap(),
+                    None => continue,
+                };
+                let dbrow = match dmap.get(gene) {
+                    Some(d) => d,
+                    None => continue,
+                };
+                add_dbnsfp_fields(dbrow, &mut record);
+                break;
             };
-            let dbrow = match dmap.get(gene) {
-                Some(d) => d,
-                None => continue,
-            };
-            add_dbnsfp_fields(dbrow, &mut record);
         };
-
-
-
         obcf.write(&record).expect("failed to write record");
     }
 }
