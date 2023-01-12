@@ -47,6 +47,21 @@ enum Commands {
         dbnsfp: bool,
         #[clap(long, value_parser, default_value_t = 1)]
         threads: usize,
+    },
+    QC {
+        input: Option<String>,
+        #[clap(long, short)]
+        output: Option<String>,
+        #[clap(long, short)]
+        field: Option<String>,
+        #[clap(long, short)]
+        rare: f32,
+        #[clap(long, short)]
+        gq: i32,
+        //#[clap(long, short)]
+        //bed: Option<String>,
+        #[clap(long, value_parser, default_value_t = 1)]
+        threads: usize,
     }
 }
 
@@ -68,6 +83,9 @@ fn main() {
         }
         Commands::GLKUP { input, output, fields, dbnsfp, threads } => {
             glkup::glkup(input.as_deref(), output.as_deref(), fields.as_deref(), dbnsfp, threads)
+        },
+        Commands::QC { input, output, field, rare, gq, threads } => {
+            qc::qc(input.as_deref(), output.as_deref(), field.as_deref(), rare, gq, threads)
         }
     }
 }

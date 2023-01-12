@@ -3,3 +3,4 @@ pub mod ann_qd;
 pub mod mcsq;
 pub mod mnv;
 pub mod glkup;
+pub mod qc;

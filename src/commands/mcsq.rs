@@ -1,15 +1,15 @@
+use linear_map::LinearMap;
+use rust_htslib::bcf::header::HeaderRecord;
+use rust_htslib::bcf::record::Buffer;
+use rust_htslib::bcf::{Header, Read};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::str;
-use rust_htslib::bcf::{Read, Header};
-use rust_htslib::bcf::header::HeaderRecord;
-use rust_htslib::bcf::record::Buffer;
-use linear_map::LinearMap;
 
 fn get_field<'a>(s: &'a str, field: &'a str) -> Option<&'a str> {
     let sb = match s.find(field) {
-        Some(b) => b+field.len()+1, // +1 for the equal sign
+        Some(b) => b + field.len() + 1, // +1 for the equal sign
         None => return None,
     };
     let eb = match s[sb..].find(";") {
@@ -28,7 +28,7 @@ fn has_tag(tags: &str, tag: &str) -> bool {
 
 fn extract_appris(tags: &str) -> Option<&str> {
     let sb = match tags.find("appris_") {
-        Some(b) => b+7, // 7 == length of appris_
+        Some(b) => b + 7, // 7 == length of appris_
         None => return None,
     };
     let eb = match tags[sb..].find(",") {
@@ -52,16 +52,18 @@ fn extract_uncertain_start_end(tags: &str) -> String {
 fn add_trns_to_map(line: String, map: &mut HashMap<String, String>) {
     for (i, col) in line.split("\t").enumerate() {
         if i == 2 {
-            if col != "transcript" { return; }
+            if col != "transcript" {
+                return;
+            }
         }
         if i == 8 {
             let mut s = String::new();
             match get_field(col, "gene_id") {
-                    Some(gene_id) => {
-                        s.push('|');
-                        s.push_str(gene_id);
-                    },
-                    None => s.push('|'),
+                Some(gene_id) => {
+                    s.push('|');
+                    s.push_str(gene_id);
+                }
+                None => s.push('|'),
             };
             match get_field(col, "tag") {
                 Some(tags) => {
@@ -102,7 +104,7 @@ fn add_trns_to_map(line: String, map: &mut HashMap<String, String>) {
                 Some(tsl) => {
                     s.push('|');
                     s.push_str(tsl);
-                },
+                }
                 None => s.push('|'),
             };
 
@@ -110,10 +112,12 @@ fn add_trns_to_map(line: String, map: &mut HashMap<String, String>) {
                 Some(trns_id) => {
                     s.push('|');
                     s.push_str(trns_id);
-                    let eb = trns_id.find(".").expect("transcript doesnt have '.' notation");
+                    let eb = trns_id
+                        .find(".")
+                        .expect("transcript doesnt have '.' notation");
                     map.insert(trns_id[0..eb].to_string(), s);
-                },
-                None => s.push('|')
+                }
+                None => s.push('|'),
             }
         }
     }
@@ -139,19 +143,19 @@ fn build_trx_map(gff_fp: Option<&str>) -> HashMap<String, String> {
 fn get_bcsq_hdr_map(hdr_recs: Vec<HeaderRecord>) -> Option<LinearMap<String, String>> {
     for hrec in hdr_recs.iter() {
         match hrec {
-            HeaderRecord::Info{key,values} => {
+            HeaderRecord::Info { key, values } => {
                 if values.get("ID").unwrap() == "BCSQ" {
-                    return Some(values.clone())
+                    return Some(values.clone());
                 }
             }
             _ => continue,
         }
     }
-    return None
+    return None;
 }
 
 fn get_num_bcsq_keys(desc: &str) -> usize {
-    return desc.split('|').count()
+    return desc.split('|').count();
 }
 
 fn get_canon_rank(csq: &Vec<&str>) -> u8 {
@@ -159,7 +163,7 @@ fn get_canon_rank(csq: &Vec<&str>) -> u8 {
     return match canon {
         "YES" => 1,
         _ => 99,
-    }
+    };
 }
 
 fn get_appris_rank(csq: &Vec<&str>) -> u8 {
@@ -173,7 +177,7 @@ fn get_appris_rank(csq: &Vec<&str>) -> u8 {
         "alternative_1" => 6,
         "alternative_2" => 7,
         _ => 99,
-    }
+    };
 }
 
 fn get_tsl_rank(csq: &Vec<&str>) -> u8 {
@@ -184,11 +188,11 @@ fn get_tsl_rank(csq: &Vec<&str>) -> u8 {
         "3" => 3,
         "4" => 4,
         "5" => 5,
-        _ => 99
-    }
+        _ => 99,
+    };
 }
 
-fn get_severity_rank(csq: &Vec<&str> ) -> u8 {
+fn get_severity_rank(csq: &Vec<&str>) -> u8 {
     let mut max: u8 = 99;
     for c in csq[0].split("&") {
         let rank = match c {
@@ -230,29 +234,28 @@ fn get_severity_rank(csq: &Vec<&str> ) -> u8 {
             "feature_truncation" => 19,
             "feature_elongation" => 19,
             "intergenic" => 20,
-            _ => 99
+            _ => 99,
         };
         if rank < max {
             max = rank
         }
     }
-    return max
+    return max;
 }
 
 fn get_biotype_rank(csq: &Vec<&str>) -> u8 {
     return match csq[3] {
         "protein_coding" => 1,
         _ => 99,
-    }
+    };
 }
 
 fn get_readthrough_rank(csq: &Vec<&str>) -> u8 {
     return match csq[11] {
         "readthrough_transcript" => 99,
         _ => 1,
-    }
+    };
 }
-
 
 const CANON: usize = 0;
 const APPRIS: usize = 1;
@@ -262,45 +265,46 @@ const BIOTYPE: usize = 4;
 const READTHROUGH: usize = 5;
 
 fn get_ranks(csq: &Vec<&str>) -> [u8; 6] {
-    return [get_canon_rank(csq), get_appris_rank(csq), get_tsl_rank(csq), get_severity_rank(csq), get_biotype_rank(csq), get_readthrough_rank(csq)]
+    return [
+        get_canon_rank(csq),
+        get_appris_rank(csq),
+        get_tsl_rank(csq),
+        get_severity_rank(csq),
+        get_biotype_rank(csq),
+        get_readthrough_rank(csq),
+    ];
 }
 
-fn compare_ranks(p_rank: &mut [u8; 6], p_csq_idx: &mut usize, c_rank: [u8; 6], c_csq_idx: usize, comps: Vec<usize>) {
-    //eprint!("ranks are {}-{}-{}-{}-{}  ---  {}-{}-{}-{}-{}\n", p_rank[0], p_rank[1], p_rank[2], p_rank[3], p_rank[4], c_rank[0], c_rank[1], c_rank[2], c_rank[3], c_rank[4]);
+fn compare_ranks(
+    p_rank: &mut [u8; 6],
+    p_csq_idx: &mut usize,
+    c_rank: [u8; 6],
+    c_csq_idx: usize,
+    comps: Vec<usize>,
+) {
     for comp in comps {
-        /*
-        match comp {
-            0 => eprint!("comparing canon\n"),
-            1 => eprint!("comparing appris\n"),
-            2 => eprint!("comparing tsl\n"),
-            3 => eprint!("comparing severe\n"),
-            4 => eprint!("comparing biotype\n"),
-            _ => eprint!("weird comp\n"),
-        }
-        */
+
 
         if c_rank[comp] < p_rank[comp] {
-            //eprint!("newer csq wins\n");
             *p_rank = c_rank;
             *p_csq_idx = c_csq_idx;
-            return
+            return;
         }
         if c_rank[comp] > p_rank[comp] {
-            //eprint!("older csq wins\n");
-            return
+            return;
         }
-
     }
-    //eprint!("these two csqs tied\n")
 }
 
 pub fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>, threads: &usize) {
     let mut bcf = bcfutils::get_rdr(input);
-    bcf.set_threads(threads.clone()).expect("unable to set reader threads");
+    bcf.set_threads(threads.clone())
+        .expect("unable to set reader threads");
 
     let hdrv = bcf.header();
 
-    let bcsq_map = get_bcsq_hdr_map(hdrv.header_records()).expect("was not able to get BCSQ header info line");
+    let bcsq_map =
+        get_bcsq_hdr_map(hdrv.header_records()).expect("was not able to get BCSQ header info line");
     let num_keys = get_num_bcsq_keys(bcsq_map.get("Description").expect("bcsq map doesnt have \"Description\", it really should though, something funky is happening"));
 
     let mut hdr = Header::from_template(&hdrv);
@@ -308,7 +312,23 @@ pub fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>, thr
     hdr.remove_info(b"BCSQ");
     hdr.push_record(r#"##INFO=<ID=BCSQ,Number=.,Type=String,Description="Local consequence annotation from BCFtools/csq, see http://samtools.github.io/bcftools/howtos/csq-calling.  html for details. Format: Consequence|gene|transcript|biotype|strand|amino_acid_change|dna_change|gene_id|CANONICAL|appris|ccds|unknown_start_end|TSL|transcript_id">"#.as_bytes());
 
-    let bcsq_fields = vec!["Consequence", "gene", "transcript", "biotype", "strand", "amino_acid_change", "dna_change", "gene_id", "CANONICAL", "appris", "ccds", "readthrough", "unknown_start_end", "TSL", "transcript_id"];
+    let bcsq_fields = vec![
+        "Consequence",
+        "gene",
+        "transcript",
+        "biotype",
+        "strand",
+        "amino_acid_change",
+        "dna_change",
+        "gene_id",
+        "CANONICAL",
+        "appris",
+        "ccds",
+        "readthrough",
+        "unknown_start_end",
+        "TSL",
+        "transcript_id",
+    ];
 
     for new_field in &bcsq_fields {
         hdr.push_record(format!("##INFO=<ID=canon_{},Number=1,Type={},Description=\"canon {}\">", new_field, "String", new_field).as_bytes());
@@ -318,7 +338,8 @@ pub fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>, thr
     }
 
     let mut obcf = bcfutils::get_wrtr(output, &hdr);
-    obcf.set_threads(threads.clone()).expect("unable to set writer threads");
+    obcf.set_threads(threads.clone())
+        .expect("unable to set writer threads");
 
     let trx_map = build_trx_map(gff_fp);
     let mut b = Buffer::new();
@@ -326,16 +347,15 @@ pub fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>, thr
         let mut record = record_result.expect("fail to read record");
         obcf.translate(&mut record);
         let bcsqs = match record.info_shared_buffer(b"BCSQ", &mut b).string().unwrap() {
-            Some(b)  => b,
+            Some(b) => b,
             None => {
                 obcf.write(&record).expect("failed to write record");
                 continue;
             }
         };
 
-
         let mut mcsqs = vec![];
-        
+
         let mut p_csq_idx = 0;
         let mut p_rank = [99, 99, 99, 99, 99, 99];
         let mut w_csq_idx = 0;
@@ -365,36 +385,69 @@ pub fn mcsq(input: Option<&str>, output: Option<&str>, gff_fp: Option<&str>, thr
             let r = get_ranks(&mcsq.split("|").collect::<Vec<&str>>());
             mcsqs.push(mcsq);
 
+            compare_ranks(
+                &mut p_rank,
+                &mut p_csq_idx,
+                r,
+                i,
+                vec![READTHROUGH, CANON, APPRIS, TSL, BIOTYPE, SEVERE],
+            );
 
-            //eprint!("starting pick comparison:\n");
-            //eprint!("comparing {} to {}\n", mcsqs[p_csq_idx], mcsqs[i]);
-            compare_ranks(&mut p_rank, &mut p_csq_idx, r, i, vec![READTHROUGH, CANON, APPRIS, TSL, BIOTYPE, SEVERE]);
-            //eprint!("starting worst comparison:\n");
-            //eprint!("comparing {} to {}\n", mcsqs[w_csq_idx], mcsqs[i]);
-            compare_ranks(&mut w_rank, &mut w_csq_idx, r, i, vec![READTHROUGH, SEVERE, CANON, APPRIS, TSL, BIOTYPE]);
-            //eprint!("starting wpc comparison:\n");
-            //eprint!("comparing {} to {}\n", mcsqs[wpc_csq_idx], mcsqs[i]);
-            compare_ranks(&mut wpc_rank, &mut wpc_csq_idx, r, i, vec![READTHROUGH, BIOTYPE, SEVERE, CANON, APPRIS, TSL]);
+            compare_ranks(
+                &mut w_rank,
+                &mut w_csq_idx,
+                r,
+                i,
+                vec![READTHROUGH, SEVERE, CANON, APPRIS, TSL, BIOTYPE],
+            );
 
-        };
-        //record.push_info_string(b"canon_BCSQ", &[mcsqs[p_csq_idx].as_bytes()]).expect("failed to set canon_BCSQ field");
-        for (i, f) in mcsqs[p_csq_idx].split("|").enumerate() {
-            record.push_info_string(format!("pick_{}", bcsq_fields[i]).as_bytes(), &[f.as_bytes()]).expect("failed to set canon_BCSQ field");
+            compare_ranks(
+                &mut wpc_rank,
+                &mut wpc_csq_idx,
+                r,
+                i,
+                vec![READTHROUGH, BIOTYPE, SEVERE, CANON, APPRIS, TSL],
+            );
         }
-        if p_rank[1] == 1 {
+        
+        for (i, f) in mcsqs[p_csq_idx].split("|").enumerate() {
+            record
+                .push_info_string(
+                    format!("pick_{}", bcsq_fields[i]).as_bytes(),
+                    &[f.as_bytes()],
+                )
+                .expect("failed to set canon_BCSQ field");
+        }
+        if p_rank[0] == 1 {
             for (i, f) in mcsqs[p_csq_idx].split("|").enumerate() {
-                record.push_info_string(format!("canon_{}", bcsq_fields[i]).as_bytes(), &[f.as_bytes()]).expect("failed to set canon_BCSQ field");
+                record
+                    .push_info_string(
+                        format!("canon_{}", bcsq_fields[i]).as_bytes(),
+                        &[f.as_bytes()],
+                    )
+                    .expect("failed to set canon_BCSQ field");
             }
         }
         for (i, f) in mcsqs[w_csq_idx].split("|").enumerate() {
-              record.push_info_string(format!("worst_{}", bcsq_fields[i]).as_bytes(), &[f.as_bytes()]).expect("failed to set canon_BCSQ field");
+            record
+                .push_info_string(
+                    format!("worst_{}", bcsq_fields[i]).as_bytes(),
+                    &[f.as_bytes()],
+                )
+                .expect("failed to set canon_BCSQ field");
         }
         for (i, f) in mcsqs[wpc_csq_idx].split("|").enumerate() {
-              record.push_info_string(format!("wpc_{}", bcsq_fields[i]).as_bytes(), &[f.as_bytes()]).expect("failed to set canon_BCSQ field");
+            record
+                .push_info_string(
+                    format!("wpc_{}", bcsq_fields[i]).as_bytes(),
+                    &[f.as_bytes()],
+                )
+                .expect("failed to set canon_BCSQ field");
         }
-        //record.push_info_string(b"worst_BCSQ", &[mcsqs[w_csq_idx].as_bytes()]).expect("failed to set worst_BCSQ info field");
-        //record.push_info_string(b"wpc_BCSQ", &[mcsqs[wpc_csq_idx].as_bytes()]).expect("failed to set wpc_BCSQ info field");
-        record.push_info_string(b"BCSQ", &[mcsqs.join(",").as_bytes()]).expect("failed to set QD info field");
+      
+        record
+            .push_info_string(b"BCSQ", &[mcsqs.join(",").as_bytes()])
+            .expect("failed to set QD info field");
         obcf.write(&record).expect("failed to write record");
     }
 }
